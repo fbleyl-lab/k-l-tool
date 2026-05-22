@@ -1,0 +1,49 @@
+name: Release APK
+
+# Bei Push eines Versions-Tags (z. B. v1.1.0) wird die APK gebaut
+# und als GitHub-Release-Anhang veröffentlicht. Die App lädt sie dann
+# über ihren eingebauten Update-Check.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: APK bauen
+        run: flutter build apk --release
+
+      - name: APK umbenennen
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/K&L-Tool-${{ github.ref_name }}.apk"
+
+      - name: Release veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
