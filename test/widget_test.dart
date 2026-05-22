@@ -5,6 +5,8 @@ import 'package:messprotokoll/models/kabel_daten.dart';
 import 'package:messprotokoll/models/kabel_rechner.dart';
 import 'package:messprotokoll/auth/freischaltung.dart';
 import 'package:messprotokoll/models/motor_rechner.dart';
+import 'package:messprotokoll/models/rechner_math.dart';
+import 'package:messprotokoll/models/sat_math.dart';
 import 'package:messprotokoll/models/wissen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:messprotokoll/utils/mess_parser.dart';
@@ -299,6 +301,32 @@ void main() {
       expect(await Freischaltung.istFrei(), isTrue);
     });
 
+    test('DC: U=230, R=23 -> I=10, P=2300', () {
+      final e = dcLoese(230, null, 23, null);
+      expect(e.i!.round(), 10);
+      expect(e.p!.round(), 2300);
+    });
+
+    test('DC: I=16, P=3680 -> U=230, R≈14,4', () {
+      final e = dcLoese(null, 16, null, 3680);
+      expect(e.u!.round(), 230);
+      expect((e.r! * 10).round(), 144);
+    });
+
+    test('DC: zu wenige Werte -> Hinweis', () {
+      expect(dcLoese(230, null, null, null).hinweis.isNotEmpty, isTrue);
+    });
+
+    test('AC 3~: 400 V, 16 A, cosφ=1 -> P≈11085 W', () {
+      final e = acLoese(dreiphasig: true, u: 400, cosPhi: 1, i: 16)!;
+      expect(e.p.round(), 11085);
+    });
+
+    test('AC 1~: 230 V, P=2300, cosφ=1 -> I=10 A', () {
+      final e = acLoese(dreiphasig: false, u: 230, cosPhi: 1, p: 2300)!;
+      expect(e.i.round(), 10);
+    });
+
     test('JSON-Roundtrip erhält Werte', () {
       final s = Stromkreis(
         stromkreisRaum: 'Küche',
@@ -311,6 +339,44 @@ void main() {
       expect(back.schutzart, Schutzart.c);
       expect(back.vorgSicherung, 16);
       expect(back.erforderlicherIkText, '172');
+    });
+  });
+
+  group('SAT-Ausrichtung', () {
+    test('Astra 19,2° aus Süddeutschland: Az ~170°, El ~34°, Skew ~+7°', () {
+      final a = berechneAusrichtung(
+          breite: 48.14, laenge: 11.58, satLaenge: 19.2);
+      expect(a.sichtbar, isTrue);
+      expect(a.azimut, closeTo(169.8, 1.0));
+      expect(a.elevation, closeTo(34.2, 1.0));
+      expect(a.skew, closeTo(6.8, 1.0));
+    });
+
+    test('Satellit genau im Süden, wenn Längengrad gleich', () {
+      final a =
+          berechneAusrichtung(breite: 50.0, laenge: 13.0, satLaenge: 13.0);
+      expect(a.azimut, closeTo(180.0, 0.5));
+      expect(a.skew, closeTo(0.0, 0.5));
+    });
+
+    test('Westlicher Satellit -> Azimut > 180° (Richtung SW)', () {
+      final a =
+          berechneAusrichtung(breite: 50.0, laenge: 13.0, satLaenge: 5.0);
+      expect(a.azimut, greaterThan(180));
+      expect(a.skew, lessThan(0)); // Skew kehrt sich um
+    });
+
+    test('Unerreichbar nahe Nordpol (Satellit unter Horizont)', () {
+      final a =
+          berechneAusrichtung(breite: 82.0, laenge: 10.0, satLaenge: 19.2);
+      expect(a.sichtbar, isFalse);
+    });
+
+    test('himmelsrichtung liefert plausible Kürzel', () {
+      expect(himmelsrichtung(0), 'N');
+      expect(himmelsrichtung(180), 'S');
+      expect(himmelsrichtung(170), 'S');
+      expect(himmelsrichtung(90), 'O');
     });
   });
 }

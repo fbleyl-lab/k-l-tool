@@ -3,6 +3,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 
 import '../models/wissen.dart';
 import '../theme.dart';
+import 'wissen_grafik.dart';
 
 class WissenScreen extends StatefulWidget {
   const WissenScreen({super.key});
@@ -179,6 +180,10 @@ class _WissenDetail extends StatelessWidget {
           if (eintrag.tabelle != null) ...[
             const SizedBox(height: 8),
             _tabelle(eintrag.tabelle!),
+          ],
+          if (wissensGrafik(eintrag.grafik) != null) ...[
+            const SizedBox(height: 14),
+            wissensGrafik(eintrag.grafik)!,
           ],
           const SizedBox(height: 16),
           Text('Quelle: ${eintrag.quelle}',

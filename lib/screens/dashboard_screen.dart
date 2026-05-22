@@ -7,6 +7,8 @@ import 'aufmass_list_screen.dart';
 import 'home_screen.dart';
 import 'kabel_tool_screen.dart';
 import 'motor_screen.dart';
+import 'rechner_screen.dart';
+import 'sat_screen.dart';
 import 'wissen_screen.dart';
 
 /// Startbildschirm mit Modulauswahl im iOS-Stil. Erweiterbar um weitere Module.
@@ -130,11 +132,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ziel: () => const MotorScreen(),
       ),
       _Modul(
+        titel: 'Elektro-Rechner',
+        untertitel: 'U · I · R · P (DC / 1~ / 3~)',
+        icon: Icons.calculate_outlined,
+        farbe: const Color(0xFF00897B),
+        ziel: () => const RechnerScreen(),
+      ),
+      _Modul(
         titel: 'Wissensdatenbank',
         untertitel: 'Normen, Fristen, Zonen …',
         icon: Icons.menu_book_outlined,
         farbe: const Color(0xFF5856D6),
         ziel: () => const WissenScreen(),
+      ),
+      _Modul(
+        titel: 'SAT-Ausrichtung',
+        untertitel: 'Azimut · Elevation · LNB-Skew',
+        icon: Icons.satellite_alt_outlined,
+        farbe: const Color(0xFF0A84C2),
+        ziel: () => const SatScreen(),
       ),
       _Modul(
         titel: 'Wallbox-Messprotokoll',
