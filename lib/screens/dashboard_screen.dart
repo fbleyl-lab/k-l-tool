@@ -28,16 +28,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _checkUpdate(bool manuell) async {
-    final info = await Updater.pruefe();
+    final e = await Updater.pruefe();
     if (!mounted) return;
-    if (info == null) {
-      if (manuell) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Du hast die aktuelle Version.')));
-      }
+    if (e.hatUpdate) {
+      _zeigeUpdate(e.info!);
       return;
     }
-    _zeigeUpdate(info);
+    if (manuell) {
+      final msg = e.fehler != null
+          ? 'Update-Prüfung fehlgeschlagen: ${e.fehler}'
+          : 'Du hast die aktuelle Version'
+              '${e.aktuelleVersion.isEmpty ? '' : ' (${e.aktuelleVersion})'}.';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(msg)));
+    }
   }
 
   void _zeigeUpdate(UpdateInfo info) {
