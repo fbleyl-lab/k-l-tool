@@ -46,3 +46,9 @@ app.*.map.json
 
 # Lokaler Projektkontext (nicht committen)
 CLAUDE.md
+
+# Release-Signatur (NICHT committen!)
+android/key.properties
+android/kl-release.jks
+*.jks
+*.keystore
