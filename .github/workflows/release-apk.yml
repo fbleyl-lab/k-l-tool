@@ -40,7 +40,7 @@ jobs:
       - name: APK umbenennen
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/K&L-Tool-${{ github.ref_name }}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/KL-Tool-${{ github.ref_name }}.apk"
 
       - name: Release veröffentlichen
         uses: softprops/action-gh-release@v2

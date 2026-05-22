@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/protokoll.dart' show Firma;
 import '../theme.dart';
+import '../update/updater.dart';
 import 'aufmass_list_screen.dart';
 import 'home_screen.dart';
 import 'kabel_tool_screen.dart';
@@ -9,8 +10,93 @@ import 'motor_screen.dart';
 import 'wissen_screen.dart';
 
 /// Startbildschirm mit Modulauswahl im iOS-Stil. Erweiterbar um weitere Module.
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Beim Start still nach Updates suchen.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdate(false));
+  }
+
+  Future<void> _checkUpdate(bool manuell) async {
+    final info = await Updater.pruefe();
+    if (!mounted) return;
+    if (info == null) {
+      if (manuell) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Du hast die aktuelle Version.')));
+      }
+      return;
+    }
+    _zeigeUpdate(info);
+  }
+
+  void _zeigeUpdate(UpdateInfo info) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Update ${info.version} verfügbar'),
+        content: SingleChildScrollView(
+          child: Text(info.notes.trim().isEmpty
+              ? 'Eine neue Version steht bereit.'
+              : info.notes.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Später')),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _installiere(info);
+            },
+            child: const Text('Aktualisieren'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _installiere(UpdateInfo info) async {
+    final fortschritt = ValueNotifier<double>(0);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Update wird geladen …'),
+        content: ValueListenableBuilder<double>(
+          valueListenable: fortschritt,
+          builder: (ctx, v, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(value: v > 0 ? v : null),
+              const SizedBox(height: 8),
+              Text('${(v * 100).toStringAsFixed(0)} %'),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      await Updater.installiere(info.apkUrl,
+          onProgress: (v) => fortschritt.value = v);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Download fehlgeschlagen.')));
+      }
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      fortschritt.dispose();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +146,16 @@ class DashboardScreen extends StatelessWidget {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('K&L Tool')),
+      appBar: AppBar(
+        title: const Text('K&L Tool'),
+        actions: [
+          IconButton(
+            tooltip: 'Nach Updates suchen',
+            icon: const Icon(Icons.system_update_alt),
+            onPressed: () => _checkUpdate(true),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
