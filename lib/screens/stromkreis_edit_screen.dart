@@ -1,44 +1,27 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_tts/flutter_tts.dart';
-import 'package:speech_to_text/speech_to_text.dart';
 
 import '../models/protokoll.dart';
 import '../models/stromkreis.dart';
 import '../models/tabelle6.dart';
-import '../utils/mess_parser.dart';
-
-/// Felder, die der geführte Sprachmodus der Reihe nach abfragt.
-enum _Feld {
-  charSich,
-  spannung,
-  fiVorhanden,
-  fiTyp,
-  fiIdn,
-  auslI,
-  auslT,
-  auslIDc,
-  auslTDc,
-  ikLn,
-  ikLpe,
-  ub,
-  rlow,
-  riso,
-}
+import 'gefuehrte_pruefung_screen.dart';
+import 'pruef_schritte.dart';
 
 class StromkreisEditScreen extends StatefulWidget {
   final Stromkreis stromkreis;
   final int nummer;
   final Netzform netzform;
   final Stromkreis? fiVorlage; // vorheriger Stromkreis (für FI-Übernahme)
+  // Wallbox-Variante: „Stromkreis / Raum" wird zu „Sicherung", Kabelname
+  // entfällt, Betriebsmittel ist fest „Zuleitung".
+  final bool wallboxModus;
   const StromkreisEditScreen({
     super.key,
     required this.stromkreis,
     required this.nummer,
     required this.netzform,
     this.fiVorlage,
+    this.wallboxModus = false,
   });
 
   @override
@@ -49,41 +32,18 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
   late Stromkreis s;
 
   late final Map<String, TextEditingController> _c;
-  final SpeechToText _speech = SpeechToText();
-  final FlutterTts _tts = FlutterTts();
-  bool _hoert = false;
-
-  // Geführter Modus
-  bool _guided = false;
-  bool _guidedHoert = false;
-  String _guidedPrompt = '';
-  int _gIndex = 0;
-  bool? _fiVorhanden;
-  bool _speechReady = false;
-  Completer<String>? _listenCompleter;
-  String _lastWords = '';
-
-  static const List<_Feld> _reihenfolge = [
-    _Feld.charSich,
-    _Feld.spannung,
-    _Feld.fiVorhanden,
-    _Feld.fiTyp,
-    _Feld.fiIdn,
-    _Feld.auslI,
-    _Feld.auslT,
-    _Feld.auslIDc,
-    _Feld.auslTDc,
-    _Feld.ikLn,
-    _Feld.ikLpe,
-    _Feld.ub,
-    _Feld.rlow,
-    _Feld.riso,
-  ];
 
   @override
   void initState() {
     super.initState();
     s = widget.stromkreis;
+    if (widget.wallboxModus) {
+      // Im Wallbox-Protokoll ist das Betriebsmittel immer die Zuleitung.
+      s.betriebsmittelModus = 'manuell';
+      if (s.anzahlBetriebsmittel.trim().isEmpty) {
+        s.anzahlBetriebsmittel = 'Zuleitung';
+      }
+    }
     _c = {
       'raum': TextEditingController(text: s.stromkreisRaum),
       'kabel': TextEditingController(text: s.kabelname),
@@ -113,9 +73,6 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
 
   @override
   void dispose() {
-    _guided = false;
-    _speech.stop();
-    _tts.stop();
     for (final c in _c.values) {
       c.dispose();
     }
@@ -141,46 +98,18 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
     _c['riso']!.text = s.riso;
   }
 
-  Future<void> _messungDiktieren() async {
-    if (_hoert) {
-      await _speech.stop();
-      setState(() => _hoert = false);
-      return;
-    }
-    final ok = await _speech.initialize(
-      onStatus: (st) {
-        if ((st == 'done' || st == 'notListening') && mounted) {
-          setState(() => _hoert = false);
-        }
-      },
-      onError: (_) {
-        if (mounted) setState(() => _hoert = false);
-      },
+  Future<void> _gefuehrtePruefung() async {
+    _syncModel();
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GefuehrtePruefungScreen(
+          titel: 'Geführte Prüfung – Stromkreis ${widget.nummer}',
+          schritte: stromkreisSchritte(s, widget.netzform),
+        ),
+      ),
     );
-    if (!ok) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Spracherkennung nicht verfügbar (Mikrofon-Freigabe?)')));
-      }
-      return;
-    }
-    setState(() => _hoert = true);
-    await _speech.listen(
-      listenOptions:
-          SpeechListenOptions(partialResults: false, localeId: 'de_DE'),
-      onResult: (r) {
-        if (!r.finalResult) return;
-        _syncModel(); // aktuelle Feldwerte ins Modell
-        final erkannt = MessParser.anwenden(s, r.recognizedWords);
-        _modellInControllers(); // geänderte Werte zurück in die Felder
-        setState(() => _hoert = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(erkannt.isEmpty
-              ? 'Nichts erkannt: „${r.recognizedWords}"'
-              : 'Erkannt: ${erkannt.join(", ")}'),
-        ));
-      },
-    );
+    if (mounted) setState(_modellInControllers);
   }
 
   void _syncModel() {
@@ -248,12 +177,19 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
-          _diktierKarte(),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: _gefuehrtePruefung,
+              icon: const Icon(Icons.checklist),
+              label: const Text('Geführte Prüfung'),
+            ),
+          ),
           const SizedBox(height: 16),
           _gruppe('Allgemein'),
-          _feld('raum', 'Stromkreis / Raum'),
-          _feld('kabel', 'Kabelname'),
-          _betriebsmittelFeld(),
+          _feld('raum', widget.wallboxModus ? 'Sicherung' : 'Stromkreis / Raum'),
+          if (!widget.wallboxModus) _feld('kabel', 'Kabelname'),
+          if (!widget.wallboxModus) _betriebsmittelFeld(),
           Row(children: [
             Expanded(child: _feld('laenge', 'Länge [m]', zahl: true)),
             const SizedBox(width: 12),
@@ -401,7 +337,8 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
           Row(children: [
             Expanded(child: _feld('rlow', 'RLOW [Ω]', zahl: true)),
             const SizedBox(width: 12),
-            Expanded(child: _feld('riso', 'RISO [MΩ]', zahl: true)),
+            Expanded(
+                child: _feld('riso', 'RISO [MΩ]', zahl: true, groesser: true)),
           ]),
 
           const SizedBox(height: 20),
@@ -573,394 +510,6 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
     );
   }
 
-  // ---------- Geführter Sprachmodus ----------
-
-  void _onSpeechStatus(String st) {
-    if ((st == 'notListening' || st == 'done') &&
-        _listenCompleter != null &&
-        !_listenCompleter!.isCompleted) {
-      _listenCompleter!.complete(_lastWords);
-    }
-    if (mounted && !_guided) setState(() => _hoert = false);
-  }
-
-  Future<String> _listenOnce() async {
-    _lastWords = '';
-    _listenCompleter = Completer<String>();
-    if (mounted) setState(() => _guidedHoert = true);
-    await _speech.listen(
-      listenOptions:
-          SpeechListenOptions(partialResults: true, localeId: 'de_DE'),
-      onResult: (r) {
-        _lastWords = r.recognizedWords;
-        if (r.finalResult && !_listenCompleter!.isCompleted) {
-          _listenCompleter!.complete(r.recognizedWords);
-        }
-      },
-    );
-    final res = await _listenCompleter!.future;
-    if (mounted) setState(() => _guidedHoert = false);
-    return res;
-  }
-
-  Future<void> _speak(String text) async {
-    await _tts.setLanguage('de-DE');
-    await _tts.setSpeechRate(0.5);
-    await _tts.awaitSpeakCompletion(true);
-    await _tts.speak(text);
-  }
-
-  Future<void> _startGuided() async {
-    _speechReady = await _speech.initialize(onStatus: _onSpeechStatus);
-    if (!_speechReady) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Spracherkennung nicht verfügbar (Mikrofon-Freigabe?)')));
-      }
-      return;
-    }
-    setState(() {
-      _guided = true;
-      _gIndex = 0;
-      _fiVorhanden = null;
-    });
-    await _guidedLoop();
-  }
-
-  Future<void> _stopGuided() async {
-    _guided = false;
-    await _speech.stop();
-    await _tts.stop();
-    if (_listenCompleter != null && !_listenCompleter!.isCompleted) {
-      _listenCompleter!.complete('');
-    }
-    if (mounted) setState(() => _guidedPrompt = '');
-  }
-
-  bool _istAktiv(_Feld f) {
-    switch (f) {
-      case _Feld.fiTyp:
-      case _Feld.fiIdn:
-      case _Feld.auslI:
-      case _Feld.auslT:
-        return _fiVorhanden == true;
-      case _Feld.auslIDc:
-      case _Feld.auslTDc:
-        return _fiVorhanden == true && s.fiTyp == 'B';
-      case _Feld.ikLpe:
-        return _fiVorhanden == false; // bei FI nicht messbar
-      default:
-        return true;
-    }
-  }
-
-  Future<void> _guidedLoop() async {
-    while (_guided && _gIndex < _reihenfolge.length) {
-      final f = _reihenfolge[_gIndex];
-      if (!_istAktiv(f)) {
-        _gIndex++;
-        continue;
-      }
-      setState(() => _guidedPrompt = _kurzPrompt(f));
-      await _speak(_ttsPrompt(f));
-      if (!_guided || !mounted) break;
-      final words = await _listenOnce();
-      if (!_guided || !mounted) break;
-      final cmd = _navBefehl(words);
-      if (cmd == 'stopp') break;
-      if (cmd == 'zurueck') {
-        _gIndex = _vorherigerAktiver(_gIndex);
-        continue;
-      }
-      if (cmd == 'weiter') {
-        _gIndex++;
-        continue;
-      }
-      if (cmd == 'wiederholen') continue;
-      final ok = _applyValue(f, words);
-      _modellInControllers();
-      setState(() {});
-      if (ok) {
-        _gIndex++;
-      } else {
-        await _speak('Nicht verstanden.');
-      }
-    }
-    if (_guided) {
-      await _speak('Fertig.');
-    }
-    if (mounted) {
-      setState(() {
-        _guided = false;
-        _guidedPrompt = '';
-      });
-    }
-  }
-
-  int _vorherigerAktiver(int von) {
-    for (var i = von - 1; i >= 0; i--) {
-      if (_istAktiv(_reihenfolge[i])) return i;
-    }
-    return von;
-  }
-
-  String _navBefehl(String w) {
-    final t = w.toLowerCase();
-    if (RegExp(r'\b(stopp|stop|fertig|abbrechen|ende|beenden)\b').hasMatch(t)) {
-      return 'stopp';
-    }
-    if (RegExp(r'\b(zur[üu]ck|korrektur)\b').hasMatch(t)) return 'zurueck';
-    if (RegExp(r'\b(weiter|[üu]berspringen|n[äa]chstes|leer)\b').hasMatch(t)) {
-      return 'weiter';
-    }
-    if (RegExp(r'\b(wiederholen|nochmal)\b').hasMatch(t)) return 'wiederholen';
-    return '';
-  }
-
-  String? _ersteZahl(String w) {
-    final m = RegExp(r'([0-9]+(?:[.,][0-9]+)?)').firstMatch(w);
-    return m?.group(1);
-  }
-
-  /// Trägt den gesprochenen Wert ins aktuelle Feld ein. true = erkannt.
-  bool _applyValue(_Feld f, String w) {
-    final t = w.toLowerCase();
-    switch (f) {
-      case _Feld.charSich:
-        final m = RegExp(r'\b(gg|b|c|d|k)\s*0*([0-9]{1,3})\b').firstMatch(t);
-        if (m == null) return false;
-        s.schutzart = SchutzartLabel.fromLabel(
-            m.group(1) == 'gg' ? 'gG' : m.group(1)!.toUpperCase());
-        final n = int.tryParse(m.group(2)!);
-        if (n != null && Tabelle6.nennstroeme(s.schutzart).contains(n)) {
-          s.vorgSicherung = n;
-        }
-        return true;
-      case _Feld.spannung:
-        if (t.contains('400')) {
-          s.spannung = '400';
-          return true;
-        }
-        if (t.contains('230')) {
-          s.spannung = '230';
-          return true;
-        }
-        return false;
-      case _Feld.fiVorhanden:
-        if (RegExp(r'\b(ja|vorhanden|fi)\b').hasMatch(t)) {
-          _fiVorhanden = true;
-          return true;
-        }
-        if (RegExp(r'\b(nein|kein|keine|nicht|ohne)\b').hasMatch(t)) {
-          _fiVorhanden = false;
-          return true;
-        }
-        return false;
-      case _Feld.fiTyp:
-        if (RegExp(r'\bb\b').hasMatch(t) || t.contains('typ b')) {
-          s.fiTyp = 'B';
-          return true;
-        }
-        if (RegExp(r'\ba\b').hasMatch(t) || t.contains('typ a')) {
-          s.fiTyp = 'A';
-          return true;
-        }
-        return false;
-      default:
-        final z = _ersteZahl(w);
-        if (z == null) return false;
-        switch (f) {
-          case _Feld.fiIdn:
-            s.fiIdn = z;
-            break;
-          case _Feld.auslI:
-            s.ausloesestrom = z;
-            break;
-          case _Feld.auslT:
-            s.ausloesezeit = z;
-            break;
-          case _Feld.auslIDc:
-            s.ausloesestromDc = z;
-            break;
-          case _Feld.auslTDc:
-            s.ausloesezeitDc = z;
-            break;
-          case _Feld.ikLn:
-            s.ikLn = z;
-            break;
-          case _Feld.ikLpe:
-            s.ikLpe = z;
-            break;
-          case _Feld.ub:
-            s.ub = z;
-            break;
-          case _Feld.rlow:
-            s.rlow = z;
-            break;
-          case _Feld.riso:
-            s.riso = z;
-            break;
-          default:
-            return false;
-        }
-        return true;
-    }
-  }
-
-  String _ttsPrompt(_Feld f) {
-    switch (f) {
-      case _Feld.charSich:
-        return 'Charakteristik und Sicherung?';
-      case _Feld.spannung:
-        return 'Spannung?';
-      case _Feld.fiVorhanden:
-        return 'F I vorhanden? Ja oder nein.';
-      case _Feld.fiTyp:
-        return 'F I Typ? A oder B.';
-      case _Feld.fiIdn:
-        return 'Bemessungsfehlerstrom in Milliampere?';
-      case _Feld.auslI:
-        return 'Auslösestrom?';
-      case _Feld.auslT:
-        return 'Auslösezeit?';
-      case _Feld.auslIDc:
-        return 'Auslösestrom Gleichstrom?';
-      case _Feld.auslTDc:
-        return 'Auslösezeit Gleichstrom?';
-      case _Feld.ikLn:
-        return 'I K L N?';
-      case _Feld.ikLpe:
-        return 'I K L P E?';
-      case _Feld.ub:
-        return 'Berührungsspannung?';
-      case _Feld.rlow:
-        return 'Schutzleiterwiderstand R LOW?';
-      case _Feld.riso:
-        return 'Isolationswiderstand?';
-    }
-  }
-
-  String _kurzPrompt(_Feld f) {
-    switch (f) {
-      case _Feld.charSich:
-        return 'Charakteristik + Sicherung (z. B. „B16")';
-      case _Feld.spannung:
-        return 'Spannung (230 / 400)';
-      case _Feld.fiVorhanden:
-        return 'FI vorhanden? („ja"/„nein")';
-      case _Feld.fiTyp:
-        return 'FI-Typ („A"/„B")';
-      case _Feld.fiIdn:
-        return 'FI / IΔN [mA]';
-      case _Feld.auslI:
-        return 'Auslösestrom [mA]';
-      case _Feld.auslT:
-        return 'Auslösezeit [ms]';
-      case _Feld.auslIDc:
-        return 'Auslösestrom DC [mA]';
-      case _Feld.auslTDc:
-        return 'Auslösezeit DC [ms]';
-      case _Feld.ikLn:
-        return 'IK L-N [A]';
-      case _Feld.ikLpe:
-        return 'IK L-PE [A]';
-      case _Feld.ub:
-        return 'UB [V]';
-      case _Feld.rlow:
-        return 'RLOW [Ω]';
-      case _Feld.riso:
-        return 'RISO [MΩ]';
-    }
-  }
-
-  Widget _diktierKarte() {
-    final cs = Theme.of(context).colorScheme;
-
-    if (_guided) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: _guidedHoert ? Colors.red.shade50 : cs.primaryContainer,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(_guidedHoert ? Icons.mic : Icons.volume_up,
-                  color: _guidedHoert ? Colors.red : cs.primary),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text('Geführte Messung',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              ),
-              OutlinedButton.icon(
-                onPressed: _stopGuided,
-                icon: const Icon(Icons.stop, size: 18),
-                label: const Text('Stopp'),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Text('Aktuell: $_guidedPrompt',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text(
-              _guidedHoert ? 'Höre zu …' : 'Ansage läuft …',
-              style: const TextStyle(fontSize: 12),
-            ),
-            const Text(
-              'Befehle: „weiter" (überspringen) · „zurück" · „stopp"',
-              style: TextStyle(fontSize: 11),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _hoert ? Colors.red.shade50 : cs.primaryContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Hände-frei: Messwerte per Sprache',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _startGuided,
-                  icon: const Icon(Icons.assistant_navigation),
-                  label: const Text('Geführt'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _messungDiktieren,
-                  icon: Icon(_hoert ? Icons.stop : Icons.mic),
-                  label: Text(_hoert ? 'Stopp' : 'Frei diktieren'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            '„Geführt": App fragt Feld für Feld ab und sagt sie an. '
-            '„Frei diktieren": alles am Stück, z. B. „B16, IK L-PE 243, RLOW 0,42".',
-            style: TextStyle(fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _betriebsmittelFeld() {
     final zaehlung = s.betriebsmittelModus != 'manuell';
     return Padding(
@@ -1027,17 +576,23 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
                 ?.copyWith(fontWeight: FontWeight.bold)),
       );
 
-  Widget _feld(String key, String label, {bool zahl = false}) => Padding(
+  // [groesser]: erlaubt zusätzlich das „>"-Zeichen (z. B. Iso-Überlauf „>999")
+  // und nutzt dafür die Texttastatur, da die Zahlentastatur kein „>" hat.
+  Widget _feld(String key, String label,
+          {bool zahl = false, bool groesser = false}) =>
+      Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: TextField(
           controller: _c[key],
           decoration: InputDecoration(labelText: label),
-          keyboardType: zahl
+          keyboardType: (zahl && !groesser)
               ? const TextInputType.numberWithOptions(decimal: true)
               : TextInputType.text,
-          inputFormatters: zahl
-              ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))]
-              : null,
+          inputFormatters: groesser
+              ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,>]'))]
+              : zahl
+                  ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))]
+                  : null,
         ),
       );
 }

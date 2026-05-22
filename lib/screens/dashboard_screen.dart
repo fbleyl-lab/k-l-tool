@@ -9,6 +9,7 @@ import 'kabel_tool_screen.dart';
 import 'motor_screen.dart';
 import 'rechner_screen.dart';
 import 'sat_screen.dart';
+import 'wallbox_list_screen.dart';
 import 'wissen_screen.dart';
 
 /// Startbildschirm mit Modulauswahl im iOS-Stil. Erweiterbar um weitere Module.
@@ -115,6 +116,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ziel: () => const HomeScreen(),
       ),
       _Modul(
+        titel: 'Wallbox-Messprotokoll',
+        untertitel: 'Messung, RCD AC/DC & Erprobung',
+        icon: Icons.ev_station_outlined,
+        farbe: AppTheme.iosGreen,
+        ziel: () => const WallboxListScreen(),
+      ),
+      _Modul(
         titel: 'Kabelquerschnitt',
         untertitel: 'Auslegung & Verlegeart',
         icon: Icons.cable_outlined,
@@ -155,13 +163,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         icon: Icons.satellite_alt_outlined,
         farbe: const Color(0xFF0A84C2),
         ziel: () => const SatScreen(),
-      ),
-      _Modul(
-        titel: 'Wallbox-Messprotokoll',
-        untertitel: 'Vorlage folgt',
-        icon: Icons.ev_station_outlined,
-        farbe: AppTheme.iosGreen,
-        ziel: null,
       ),
     ];
 

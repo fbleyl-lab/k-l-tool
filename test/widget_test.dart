@@ -1,6 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:messprotokoll/models/stromkreis.dart';
+import 'package:messprotokoll/models/protokoll.dart';
+import 'package:messprotokoll/models/wallbox_protokoll.dart';
 import 'package:messprotokoll/models/tabelle6.dart';
+import 'package:messprotokoll/screens/gefuehrte_pruefung_screen.dart';
+import 'package:messprotokoll/screens/pruef_schritte.dart';
 import 'package:messprotokoll/models/kabel_daten.dart';
 import 'package:messprotokoll/models/kabel_rechner.dart';
 import 'package:messprotokoll/auth/freischaltung.dart';
@@ -377,6 +381,143 @@ void main() {
       expect(himmelsrichtung(180), 'S');
       expect(himmelsrichtung(170), 'S');
       expect(himmelsrichtung(90), 'O');
+    });
+  });
+
+  group('Wallbox-Messprotokoll', () {
+    WallboxProtokoll wb({
+      Netzform netzform = Netzform.tn,
+      String iDn = '30',
+      String schutzleiter = '',
+      String rcdZeitAc = '',
+      String rcdStromAc = '',
+      String rcdStromDc = '',
+    }) =>
+        WallboxProtokoll(
+          id: 't',
+          erstelltAm: DateTime(2026, 1, 1),
+          geaendertAm: DateTime(2026, 1, 1),
+          netzform: netzform,
+          iDn: iDn,
+          schutzleiterLadebuchse: schutzleiter,
+          rcdZeitAc: rcdZeitAc,
+          rcdStromAc: rcdStromAc,
+          rcdStromDc: rcdStromDc,
+        );
+
+    test('Schutzleiter: ≤0,3 Ω i.O., darüber n.i.O., leer offen', () {
+      expect(wb(schutzleiter: '0,3').schutzleiterStatus, Pruefstatus.ok);
+      expect(wb(schutzleiter: '0,35').schutzleiterStatus, Pruefstatus.nichtOk);
+      expect(wb().schutzleiterStatus, Pruefstatus.offen);
+    });
+
+    test('RCD Abschaltzeit AC gegen Netzform-Grenze (TN 400 / TT 200)', () {
+      expect(wb(rcdZeitAc: '180').rcdZeitAcStatus, Pruefstatus.ok);
+      expect(wb(netzform: Netzform.tt, rcdZeitAc: '250').rcdZeitAcStatus,
+          Pruefstatus.nichtOk);
+      expect(wb(netzform: Netzform.tt, rcdZeitAc: '180').rcdZeitAcStatus,
+          Pruefstatus.ok);
+    });
+
+    test('RCD Abschaltstrom AC im Band 0,5–1×IΔN (30 mA)', () {
+      expect(wb(rcdStromAc: '21').rcdStromAcStatus, Pruefstatus.ok);
+      expect(wb(rcdStromAc: '10').rcdStromAcStatus, Pruefstatus.nichtOk);
+      expect(wb(rcdStromAc: '35').rcdStromAcStatus, Pruefstatus.nichtOk);
+    });
+
+    test('AC-Band folgt eingegebenem IΔN (300 mA → 150–300)', () {
+      expect(
+          wb(iDn: '300', rcdStromAc: '200').rcdStromAcStatus, Pruefstatus.ok);
+      expect(wb(iDn: '300', rcdStromAc: '100').rcdStromAcStatus,
+          Pruefstatus.nichtOk);
+    });
+
+    test('RCD Abschaltstrom DC: ≤6 mA i.O., darüber n.i.O.', () {
+      expect(wb(rcdStromDc: '5').rcdStromDcStatus, Pruefstatus.ok);
+      expect(wb(rcdStromDc: '8').rcdStromDcStatus, Pruefstatus.nichtOk);
+    });
+
+    test('hatMangel erkennt n.i.O.-Messwert', () {
+      expect(wb(schutzleiter: '0,2').hatMangel, isFalse);
+      expect(wb(schutzleiter: '0,9').hatMangel, isTrue);
+    });
+
+    test('JSON-Roundtrip erhält Mess- und Erprobungswerte', () {
+      final p = wb(schutzleiter: '0,2', rcdStromDc: '4');
+      p.isoVorSchuetz = '550';
+      p.isoNachSchuetz = '480';
+      p.erprobung[0].status = Pruefstatus.ok;
+      p.erprobung[1].status = Pruefstatus.nichtOk;
+      final back = WallboxProtokoll.fromJson(p.toJson());
+      expect(back.schutzleiterLadebuchse, '0,2');
+      expect(back.isoVorSchuetz, '550');
+      expect(back.isoNachSchuetz, '480');
+      expect(back.rcdStromDc, '4');
+      expect(back.erprobung[0].status, Pruefstatus.ok);
+      expect(back.erprobung[1].status, Pruefstatus.nichtOk);
+      expect(back.erprobung.length, erprobungsFragen.length);
+    });
+  });
+
+  group('Geführter Prüfmodus', () {
+    Pruefschritt byTitle(List<Pruefschritt> l, String contains) =>
+        l.firstWhere((s) => s.titel.contains(contains));
+
+    test('Stromkreis: IK L-PE entfällt bei FI, FI-Schritte erscheinen', () {
+      final s = Stromkreis(
+        schutzart: Schutzart.b,
+        vorgSicherung: 16,
+        fiIdn: '30',
+        ausloesestrom: '21',
+        ausloesezeit: '30',
+      );
+      final steps = stromkreisSchritte(s, Netzform.tn);
+      expect(byTitle(steps, 'IK L-PE').sichtbar(), isFalse);
+      expect(byTitle(steps, 'IΔN').sichtbar(), isTrue);
+      expect(byTitle(steps, 'Auslösezeit AC').sichtbar(), isTrue);
+    });
+
+    test('Stromkreis: ohne FI ist IK L-PE sichtbar, FI-Schritte nicht', () {
+      final s = Stromkreis(schutzart: Schutzart.b, vorgSicherung: 16);
+      final steps = stromkreisSchritte(s, Netzform.tn);
+      expect(byTitle(steps, 'IK L-PE').sichtbar(), isTrue);
+      expect(byTitle(steps, 'IΔN').sichtbar(), isFalse);
+    });
+
+    test('Stromkreis: RLOW-Ampel ≤ 1 Ω', () {
+      final s = Stromkreis();
+      final rlow = byTitle(stromkreisSchritte(s, Netzform.tn), 'RLOW');
+      s.rlow = '0,4';
+      expect(rlow.ampel!(), Pruefstatus.ok);
+      s.rlow = '1,5';
+      expect(rlow.ampel!(), Pruefstatus.nichtOk);
+    });
+
+    test('Wallbox: Zuleitung zuerst + FI-Übernahme in den Block (Typ A: kein DC)',
+        () {
+      final p = WallboxProtokoll(
+          id: 't', erstelltAm: DateTime(2026), geaendertAm: DateTime(2026));
+      final z = Stromkreis(
+        fiIdn: '30',
+        fiTyp: 'A',
+        ausloesestrom: '22',
+        ausloesezeit: '28',
+      );
+      final steps = wallboxSchritte(p, z);
+      expect(steps.first.titel.startsWith('Zuleitung'), isTrue);
+      byTitle(steps, 'Schutzleiter Ladebuchse').vorAnzeige!();
+      expect(p.iDn, '30');
+      expect(p.rcdStromAc, '22');
+      expect(p.rcdZeitAc, '28');
+      expect(p.rcdStromDc, ''); // Typ A -> DC separat messen
+    });
+
+    test('Stromkreis: Vorsicherung ist Dropdown mit Nenngrößen', () {
+      final s = Stromkreis(schutzart: Schutzart.b);
+      final vor = byTitle(stromkreisSchritte(s, Netzform.tn), 'Vorsicherung');
+      expect(vor.eingabe, PruefEingabe.dropdown);
+      expect(vor.inputLabel, 'Nennstrom');
+      expect(vor.optionen(), contains('16'));
     });
   });
 }

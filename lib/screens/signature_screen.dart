@@ -55,49 +55,67 @@ class _SignatureScreenState extends State<SignatureScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(12),
-            child: Text('Bitte im Feld unterschreiben.'),
-          ),
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Signature(
-                controller: _controller,
-                backgroundColor: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Schreibfeld auf einen Teil der Höhe begrenzen, damit die Buttons
+            // unten auf jedem Handy (auch mit Gestenleiste) erreichbar bleiben.
+            final feldHoehe =
+                (constraints.maxHeight * 0.55).clamp(160.0, 320.0);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text('Bitte im Feld unterschreiben.'),
+                ),
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context, null),
-                    child: const Text('Abbrechen'),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: SizedBox(
+                        height: feldHoehe,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            border: Border.all(color: Colors.grey),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Signature(
+                            controller: _controller,
+                            backgroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _speichern,
-                    icon: const Icon(Icons.check),
-                    label: const Text('Übernehmen'),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context, null),
+                          child: const Text('Abbrechen'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _speichern,
+                          icon: const Icon(Icons.check),
+                          label: const Text('Übernehmen'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
