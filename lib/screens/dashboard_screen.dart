@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/protokoll.dart' show Firma;
 import '../theme.dart';
@@ -21,11 +22,21 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  String _version = '';
+
   @override
   void initState() {
     super.initState();
+    _ladeVersion();
     // Beim Start still nach Updates suchen.
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdate(false));
+  }
+
+  Future<void> _ladeVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _version = info.version);
+    } catch (_) {/* egal */}
   }
 
   Future<void> _checkUpdate(bool manuell) async {
@@ -168,7 +179,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('K&L Tool'),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('K&L Tool'),
+            if (_version.isNotEmpty)
+              Text('v$_version',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppTheme.iosSecondary)),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Nach Updates suchen',

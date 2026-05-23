@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Mikrofon für Spracheingabe (Aufmaßliste) -->
+    <!-- Netz für Update-Prüfung (GitHub Releases API) und APK-Download.
+         Im Release-Build wird nur dieses Manifest verwendet; ohne diese
+         Permission scheitert jede Netzanfrage sofort auf TCP-Ebene. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Mikrofon für Spracheingabe (Aufmaßliste, Freihandmodus) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <!-- Installation der heruntergeladenen Update-APK -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
