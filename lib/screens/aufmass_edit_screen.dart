@@ -11,6 +11,7 @@ import '../pdf/aufmass_pdf.dart';
 import '../storage/aufmass_storage.dart';
 import '../utils/sprach_parser.dart';
 import '../widgets/foto_galerie.dart';
+import 'aufmass_sprach_screen.dart';
 
 class AufmassEditScreen extends StatefulWidget {
   final Aufmass aufmass;
@@ -97,6 +98,22 @@ class _AufmassEditScreenState extends State<AufmassEditScreen> {
     _speichernStill();
   }
 
+  Future<void> _spracherfassung() async {
+    final ergebnis = await Navigator.push<List<AufmassPosition>>(
+      context,
+      MaterialPageRoute(builder: (_) => const AufmassSprachScreen()),
+    );
+    if (ergebnis == null || ergebnis.isEmpty) return;
+    setState(() {
+      a.positionen.addAll(ergebnis.map((p) => p.copy()));
+    });
+    _speichernStill();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('${ergebnis.length} Position(en) übernommen'),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -157,6 +174,15 @@ class _AufmassEditScreenState extends State<AufmassEditScreen> {
                 label: const Text('Position'),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _spracherfassung,
+              icon: const Icon(Icons.mic),
+              label: const Text('Sprach-Erfassung (mehrere Positionen)'),
+            ),
           ),
           const SizedBox(height: 8),
           ...a.positionen.asMap().entries.map((e) => _PositionCard(

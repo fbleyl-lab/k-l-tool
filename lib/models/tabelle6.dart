@@ -11,7 +11,7 @@
 // gG (gL/gM) sind nicht über einen Faktor berechenbar, sondern aus der
 // Sicherungskennlinie tabelliert — getrennt für Abschaltzeit 5 s und 0,4 s.
 
-enum Schutzart { b, c, d, k, gg }
+enum Schutzart { b, c, d, k, gg, mss }
 
 extension SchutzartLabel on Schutzart {
   String get label {
@@ -26,6 +26,8 @@ extension SchutzartLabel on Schutzart {
         return 'K';
       case Schutzart.gg:
         return 'gG';
+      case Schutzart.mss:
+        return 'MSS';
     }
   }
 
@@ -39,6 +41,8 @@ extension SchutzartLabel on Schutzart {
         return Schutzart.k;
       case 'gG':
         return Schutzart.gg;
+      case 'MSS':
+        return Schutzart.mss;
       default:
         return Schutzart.b;
     }
@@ -212,10 +216,20 @@ class Tabelle6 {
         return abschaltzeit == Abschaltzeit.s5
             ? _gg5s[nennstrom]
             : _gg04s[nennstrom];
+      case Schutzart.mss:
+        // Motorschutzschalter: magnetische Schnellauslösung typ. 13×Ie
+        // (EN 60947-2 / IEC 60947-4-1; herstellerabhängig — ABB MS, Siemens
+        // 3RV, Schneider GV alle 13×, Eaton PKZM teilweise 14×). Mindest-
+        // anzeige rechnerisch mit ~7,5 % Messunsicherheit (vgl. C-LS).
+        final grenzwert = 13.0 * nennstrom;
+        final minAnzeige = (grenzwert * 1.075).ceilToDouble();
+        return IkWert(grenzwert, minAnzeige);
     }
   }
 
-  /// Verfügbare Nennströme je Schutzart.
+  /// Verfügbare Nennströme je Schutzart. Für MSS ist der eingestellte Ie
+  /// frei wählbar — UI nutzt Freitext statt Dropdown; die Liste hier dient
+  /// nur als Fallback (gleiche LS-Nennstrom-Skala).
   static List<int> nennstroeme(Schutzart art) =>
       art == Schutzart.gg ? nennstroemeGg : nennstroemeLs;
 }

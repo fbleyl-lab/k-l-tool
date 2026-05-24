@@ -527,12 +527,14 @@ class _WallboxEditScreenState extends State<WallboxEditScreen> {
             einheit: 'MΩ',
             controller: _isoVor,
             groesserErlaubt: true,
+            status: p.isoVorSchuetzStatus,
           ),
           _messFeld(
             label: 'Isolationswiderstand L/N–PE nach Schütz',
             einheit: 'MΩ',
             controller: _isoNach,
             groesserErlaubt: true,
+            status: p.isoNachSchuetzStatus,
           ),
           _messFeld(
             label: 'RCD Abschaltzeit AC',

@@ -52,3 +52,6 @@ android/key.properties
 android/kl-release.jks
 *.jks
 *.keystore
+
+# Firmen-Quelldateien (Vorlage, kein App-Asset)
+Messprotokoll Muster.xls

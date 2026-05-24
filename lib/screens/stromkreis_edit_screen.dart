@@ -105,7 +105,11 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
       MaterialPageRoute(
         builder: (_) => GefuehrtePruefungScreen(
           titel: 'Geführte Prüfung – Stromkreis ${widget.nummer}',
-          schritte: stromkreisSchritte(s, widget.netzform),
+          schritte: stromkreisSchritte(
+            s,
+            widget.netzform,
+            vorheriger: widget.fiVorlage,
+          ),
         ),
       ),
     );
@@ -139,6 +143,8 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
   /// Falls der aktuelle Nennstrom für die neue Schutzart nicht existiert,
   /// auf null zurücksetzen.
   void _pruefeNennstrom() {
+    // Bei MSS ist Ie frei einstellbar (Freitext) – kein Reset.
+    if (s.schutzart == Schutzart.mss) return;
     final liste = Tabelle6.nennstroeme(s.schutzart);
     if (s.vorgSicherung != null && !liste.contains(s.vorgSicherung)) {
       s.vorgSicherung = null;
@@ -212,17 +218,31 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
             }),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<int?>(
-            initialValue: s.vorgSicherung,
-            decoration:
-                const InputDecoration(labelText: 'Vorgeschaltete Sicherung [A]'),
-            items: [
-              const DropdownMenuItem<int?>(value: null, child: Text('—')),
-              ...nennstroeme.map((n) =>
-                  DropdownMenuItem<int?>(value: n, child: Text('$n A'))),
-            ],
-            onChanged: (v) => setState(() => s.vorgSicherung = v),
-          ),
+          if (s.schutzart == Schutzart.mss)
+            TextFormField(
+              key: ValueKey('vorgSich-mss-${s.vorgSicherung ?? ''}'),
+              initialValue: s.vorgSicherung?.toString() ?? '',
+              decoration: const InputDecoration(
+                labelText: 'Eingestellter Nennstrom Ie [A]',
+                helperText: 'Freie Eingabe — MSS-Skala ist herstellerabhängig.',
+              ),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (v) =>
+                  setState(() => s.vorgSicherung = int.tryParse(v.trim())),
+            )
+          else
+            DropdownButtonFormField<int?>(
+              initialValue: s.vorgSicherung,
+              decoration: const InputDecoration(
+                  labelText: 'Vorgeschaltete Sicherung [A]'),
+              items: [
+                const DropdownMenuItem<int?>(value: null, child: Text('—')),
+                ...nennstroeme.map((n) =>
+                    DropdownMenuItem<int?>(value: n, child: Text('$n A'))),
+              ],
+              onChanged: (v) => setState(() => s.vorgSicherung = v),
+            ),
           if (s.schutzart == Schutzart.gg) ...[
             const SizedBox(height: 12),
             Row(
@@ -467,6 +487,8 @@ class _StromkreisEditScreenState extends State<StromkreisEditScreen> {
         return 'K  (LS, 12×In)';
       case Schutzart.gg:
         return 'gG  (Schmelzsicherung)';
+      case Schutzart.mss:
+        return 'MSS  (Motorschutzschalter, 13×Ie)';
     }
   }
 

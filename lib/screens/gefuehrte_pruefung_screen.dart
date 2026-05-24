@@ -8,7 +8,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import '../models/stromkreis.dart' show Pruefstatus;
 
 /// Eingabeart eines Prüfschritts im geführten Prüfmodus.
-enum PruefEingabe { zahl, jaNein, auswahl, dropdown, info }
+enum PruefEingabe { zahl, text, jaNein, auswahl, dropdown, info }
 
 /// Ein einzelner Schritt im geführten Prüfablauf. Die Werte werden über
 /// Closures direkt aus dem Zielobjekt (Stromkreis / WallboxProtokoll) gelesen
@@ -89,7 +89,7 @@ class _GefuehrtePruefungScreenState extends State<GefuehrtePruefungScreen> {
     _ctrl.addListener(() {
       if (_laden) return;
       final s = widget.schritte[_i];
-      if (s.eingabe == PruefEingabe.zahl) {
+      if (s.eingabe == PruefEingabe.zahl || s.eingabe == PruefEingabe.text) {
         s.wertSchreiben(_ctrl.text);
         setState(() {});
       }
@@ -141,7 +141,7 @@ class _GefuehrtePruefungScreenState extends State<GefuehrtePruefungScreen> {
   void _ladeSchritt() {
     final s = widget.schritte[_i];
     s.vorAnzeige?.call();
-    if (s.eingabe == PruefEingabe.zahl) {
+    if (s.eingabe == PruefEingabe.zahl || s.eingabe == PruefEingabe.text) {
       _laden = true;
       _ctrl.text = s.wertLesen();
       _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
@@ -343,6 +343,16 @@ class _GefuehrtePruefungScreenState extends State<GefuehrtePruefungScreen> {
         setState(() {});
         await _sprich(treffer);
         return true;
+      case PruefEingabe.text:
+        final t = words.trim();
+        if (t.isEmpty) return false;
+        s.wertSchreiben(t);
+        _laden = true;
+        _ctrl.text = t;
+        _laden = false;
+        setState(() {});
+        await _sprich(t);
+        return true;
       case PruefEingabe.info:
         return false;
     }
@@ -500,6 +510,17 @@ class _GefuehrtePruefungScreenState extends State<GefuehrtePruefungScreen> {
     switch (s.eingabe) {
       case PruefEingabe.info:
         return const SizedBox.shrink();
+      case PruefEingabe.text:
+        return TextField(
+          controller: _ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.text,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(
+            labelText: s.inputLabel,
+            border: const OutlineInputBorder(),
+          ),
+        );
       case PruefEingabe.zahl:
         final st = s.ampel?.call();
         return Column(
@@ -587,7 +608,8 @@ class _GefuehrtePruefungScreenState extends State<GefuehrtePruefungScreen> {
     final st = s.eingabe == PruefEingabe.jaNein
         ? s.statusLesen?.call()
         : s.ampel?.call();
-    final wert = s.eingabe == PruefEingabe.zahl
+    final wert = (s.eingabe == PruefEingabe.zahl ||
+            s.eingabe == PruefEingabe.text)
         ? _ctrl.text
         : (s.eingabe == PruefEingabe.auswahl ||
                 s.eingabe == PruefEingabe.dropdown

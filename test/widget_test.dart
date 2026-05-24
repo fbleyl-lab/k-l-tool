@@ -141,6 +141,36 @@ void main() {
       expect(p.bezeichnung, 'Verteilerschrank');
     });
 
+    test('Sprach-Parser: zusammengesetztes Zahlwort einundzwanzig', () {
+      final p = SprachParser.parse('einundzwanzig Schalter');
+      expect(p.menge, '21');
+      expect(p.bezeichnung, 'Schalter');
+    });
+
+    test('Sprach-Parser: fünfundzwanzig (alle Schreibweisen)', () {
+      expect(SprachParser.parse('fünfundzwanzig Steckdosen').menge, '25');
+      expect(SprachParser.parse('fuenfundzwanzig Steckdosen').menge, '25');
+    });
+
+    test('Sprach-Parser: "zwei komma fünf" wird zu Dezimal', () {
+      final p = SprachParser.parse('zwei komma fünf Meter Kabel');
+      expect(p.menge, '2,5');
+      expect(p.einheit, 'm');
+      expect(p.bezeichnung, 'Kabel');
+    });
+
+    test('Sprach-Parser: kg + Pausch erkannt', () {
+      expect(SprachParser.parse('5 kg Schrauben').einheit, 'kg');
+      expect(SprachParser.parse('1 pauschal Anschluss').einheit, 'Pausch');
+    });
+
+    test('Sprach-Parser: leerer Text gibt leere Position', () {
+      final p = SprachParser.parse('');
+      expect(p.menge, '');
+      expect(p.bezeichnung, '');
+      expect(p.einheit, isNull);
+    });
+
     test('FI Typ B: DC-Werte werden bewertet', () {
       final s = Stromkreis(
         schutzart: Schutzart.b,
@@ -518,6 +548,109 @@ void main() {
       expect(vor.eingabe, PruefEingabe.dropdown);
       expect(vor.inputLabel, 'Nennstrom');
       expect(vor.optionen(), contains('16'));
+    });
+
+    test('Iso-Status ≥ 1 MΩ inkl. „>500" als i.O.', () {
+      expect(Stromkreis.isoStatus(''), Pruefstatus.offen);
+      expect(Stromkreis.isoStatus('abc'), Pruefstatus.offen);
+      expect(Stromkreis.isoStatus('0,5'), Pruefstatus.nichtOk);
+      expect(Stromkreis.isoStatus('1'), Pruefstatus.ok);
+      expect(Stromkreis.isoStatus('>500'), Pruefstatus.ok);
+      expect(Stromkreis(riso: '0,5').risoStatus, Pruefstatus.nichtOk);
+      expect(Stromkreis(riso: '>500').risoStatus, Pruefstatus.ok);
+    });
+
+    test('Wallbox: Iso-Bewertung wandert in bewerteteMesswerte/hatMangel', () {
+      final p = WallboxProtokoll(
+          id: 't', erstelltAm: DateTime(2026), geaendertAm: DateTime(2026));
+      p.isoVorSchuetz = '>500';
+      p.isoNachSchuetz = '0,5'; // < 1 MΩ -> n.i.O.
+      expect(p.isoVorSchuetzStatus, Pruefstatus.ok);
+      expect(p.isoNachSchuetzStatus, Pruefstatus.nichtOk);
+      expect(p.hatMangel, isTrue);
+      // beide ok -> kein Iso-Mangel
+      p.isoNachSchuetz = '50';
+      expect(p.hatMangel, isFalse);
+    });
+
+    test('Phase 1: Bezeichnung ist erster Schritt (free text)', () {
+      final s = Stromkreis();
+      final steps = stromkreisStammdatenSchritte(s);
+      final bez = steps.first;
+      expect(bez.titel, 'Bezeichnung');
+      expect(bez.eingabe, PruefEingabe.text);
+      bez.wertSchreiben('1F1');
+      expect(s.stromkreisRaum, '1F1');
+    });
+
+    test('FI-Sharing: Inheriter überspringt FI-Stammdaten + Mess-Schritte', () {
+      final lead = Stromkreis(
+        fiTyp: 'A',
+        fiN: '40',
+        fiIdn: '30',
+        ausloesestrom: '21',
+        ausloesezeit: '25',
+      );
+      final inheriter = Stromkreis();
+      final stamm =
+          stromkreisStammdatenSchritte(inheriter, vorheriger: lead);
+      byTitle(stamm, 'FI/RCD vorhanden?').wertSchreiben('Ja');
+      byTitle(stamm, 'Gleicher FI wie vorheriger').wertSchreiben('Ja');
+      expect(inheriter.gleicherFiWieVorheriger, isTrue);
+      expect(inheriter.fiTyp, 'A');
+      expect(inheriter.fiIdn, '30');
+      // FI-Typ/Nennstrom/IΔN in Stammdaten ausgeblendet:
+      expect(byTitle(stamm, 'FI-Typ').sichtbar(), isFalse);
+      expect(byTitle(stamm, 'FI: Nennstrom').sichtbar(), isFalse);
+      expect(byTitle(stamm, 'IΔN').sichtbar(), isFalse);
+      // FI-Mess in Phase 2 ausgeblendet:
+      final mess = stromkreisMessSchritte(inheriter, Netzform.tn);
+      expect(byTitle(mess, 'Auslösezeit AC').sichtbar(), isFalse);
+      expect(byTitle(mess, 'Auslösestrom AC').sichtbar(), isFalse);
+    });
+
+    test('MSS: erforderlicher IK = 13×Ie + ~7,5 % Messunsicherheit', () {
+      // Roundtrip + lookup
+      expect(SchutzartLabel.fromLabel('MSS'), Schutzart.mss);
+      expect(Schutzart.mss.label, 'MSS');
+      final w10 = Tabelle6.lookup(Schutzart.mss, 10);
+      expect(w10!.grenzwert, 130.0); // 13 × 10
+      expect(w10.minAnzeige, 140.0); // ceil(130 × 1.075)
+      // krummer Ie (z. B. 8 A für 4-kW-Motor)
+      final s = Stromkreis(schutzart: Schutzart.mss, vorgSicherung: 8);
+      expect(s.grenzwertIkText, '104'); // 13×8
+      expect(s.erforderlicherIkText, '112'); // ceil(104×1.075) = 112
+    });
+
+    test('Wizard: MSS schaltet Vorsicherung-Schritt auf Freitext', () {
+      final s = Stromkreis(schutzart: Schutzart.mss);
+      final stamm = stromkreisStammdatenSchritte(s);
+      // Charakteristik-Optionen enthalten MSS.
+      expect(byTitle(stamm, 'Charakteristik').optionen(), contains('MSS'));
+      // Dropdown-Variante ist bei MSS unsichtbar:
+      final dropdown = stamm.firstWhere((p) =>
+          p.titel == 'Vorsicherung' && p.eingabe == PruefEingabe.dropdown);
+      expect(dropdown.sichtbar(), isFalse);
+      // Freitext-Variante ist sichtbar:
+      final freitext = stamm.firstWhere((p) =>
+          p.titel.contains('eingestellt am MSS') &&
+          p.eingabe == PruefEingabe.zahl);
+      expect(freitext.sichtbar(), isTrue);
+    });
+
+    test('propagateFiKette: Inheriter erbt FI-Mess-Werte vom Lead', () {
+      final lead = Stromkreis(
+        fiTyp: 'A',
+        fiN: '40',
+        fiIdn: '30',
+        ausloesestrom: '21',
+        ausloesezeit: '25',
+      );
+      final inheriter = Stromkreis()..gleicherFiWieVorheriger = true;
+      propagateFiKette([lead, inheriter]);
+      expect(inheriter.fiIdn, '30');
+      expect(inheriter.ausloesestrom, '21');
+      expect(inheriter.ausloesezeit, '25');
     });
   });
 }

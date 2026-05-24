@@ -163,10 +163,19 @@ class WallboxProtokoll {
     return i <= 6 ? Pruefstatus.ok : Pruefstatus.nichtOk;
   }
 
+  /// Isolationswiderstand L/N–PE vor Schütz (≥ 1 MΩ, „>N" zählt als „mind. N").
+  Pruefstatus get isoVorSchuetzStatus => Stromkreis.isoStatus(isoVorSchuetz);
+
+  /// Isolationswiderstand L/N–PE nach Schütz (≥ 1 MΩ).
+  Pruefstatus get isoNachSchuetzStatus => Stromkreis.isoStatus(isoNachSchuetz);
+
   /// Liste der bewerteten Messwerte (Label, Status) – für Anzeige und PDF.
-  /// rcdZeitDc, isoVorSchuetz, isoNachSchuetz werden bewusst nur erfasst.
+  /// Nur rcdZeitDc bleibt bewusst „nur erfasst" (kein dokumentierter
+  /// ms-Grenzwert).
   List<MapEntry<String, Pruefstatus>> get bewerteteMesswerte => [
         MapEntry('Schutzleiter ≤ 0,3 Ω', schutzleiterStatus),
+        MapEntry('Iso vor Schütz ≥ 1 MΩ', isoVorSchuetzStatus),
+        MapEntry('Iso nach Schütz ≥ 1 MΩ', isoNachSchuetzStatus),
         MapEntry('RCD Abschaltzeit AC', rcdZeitAcStatus),
         MapEntry('RCD Abschaltstrom AC (0,5–1×IΔN)', rcdStromAcStatus),
         MapEntry('RCD Abschaltstrom DC ≤ 6 mA', rcdStromDcStatus),

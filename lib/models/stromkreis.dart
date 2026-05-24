@@ -61,6 +61,13 @@ class Stromkreis {
   String rlow; // Ω
   String riso; // MΩ
 
+  // FI-Gruppen-Flag: true, wenn dieser Stromkreis am selben FI hängt wie der
+  // direkt vorherige (gleicher FI-Typ, Nennstrom, IΔN UND gleiche FI-Mess-
+  // Werte). Wizard überspringt für Inheriter die FI-Stammdaten- und FI-Mess-
+  // Schritte; eine Propagation in der Liste füllt die Werte automatisch aus
+  // dem Lead-Stromkreis nach.
+  bool gleicherFiWieVorheriger;
+
   Stromkreis({
     this.stromkreisRaum = '',
     this.kabelname = '',
@@ -87,6 +94,7 @@ class Stromkreis {
     this.ub = '',
     this.rlow = '',
     this.riso = '',
+    this.gleicherFiWieVorheriger = false,
   });
 
   /// Wertepaar (Grenzwert/Min.Anzeige) aus Tabelle 6, oder null.
@@ -120,6 +128,20 @@ class Stromkreis {
 
   static double? _num(String s) =>
       s.trim().isEmpty ? null : double.tryParse(s.replaceAll(',', '.').trim());
+
+  /// Bewertet einen Isolationswiderstand gegen den Grenzwert ≥ 1 MΩ
+  /// (DIN VDE 0100-600 §6.4.3.3, 500 V DC). Erkennt auch „>N" als
+  /// „mindestens N MΩ" (Megohmmeter-Überlauf, z. B. „>500").
+  static Pruefstatus isoStatus(String v) {
+    final ohneGroesser = v.replaceAll('>', '').trim();
+    if (ohneGroesser.isEmpty) return Pruefstatus.offen;
+    final x = double.tryParse(ohneGroesser.replaceAll(',', '.'));
+    if (x == null) return Pruefstatus.offen;
+    return x >= 1.0 ? Pruefstatus.ok : Pruefstatus.nichtOk;
+  }
+
+  /// Beurteilung des Isolationswiderstands RISO (≥ 1 MΩ).
+  Pruefstatus get risoStatus => isoStatus(riso);
 
   /// Erforderlicher IK als Zahl (Min.-Anzeige aus Tabelle 6 oder manueller Wert).
   double? get erforderlicherIkValue {
@@ -258,6 +280,7 @@ class Stromkreis {
         'ub': ub,
         'rlow': rlow,
         'riso': riso,
+        'gleicherFiWieVorheriger': gleicherFiWieVorheriger,
       };
 
   factory Stromkreis.fromJson(Map<String, dynamic> j) => Stromkreis(
@@ -296,6 +319,7 @@ class Stromkreis {
         ub: j['ub'] ?? '',
         rlow: j['rlow'] ?? '',
         riso: j['riso'] ?? '',
+        gleicherFiWieVorheriger: j['gleicherFiWieVorheriger'] ?? false,
       );
 
   Stromkreis copy() => Stromkreis.fromJson(toJson());

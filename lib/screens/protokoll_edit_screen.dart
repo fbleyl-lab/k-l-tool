@@ -267,17 +267,22 @@ class _ProtokollEditScreenState extends State<ProtokollEditScreen> {
     while (true) {
       if (!mounted) return;
       final s = Stromkreis();
+      final vorheriger =
+          p.stromkreise.isEmpty ? null : p.stromkreise.last;
       final ok = await Navigator.push<bool>(
         context,
         MaterialPageRoute(
           builder: (_) => GefuehrtePruefungScreen(
             titel: 'Stammdaten – Stromkreis ${p.stromkreise.length + 1}',
-            schritte: stromkreisStammdatenSchritte(s),
+            schritte: stromkreisStammdatenSchritte(s, vorheriger: vorheriger),
           ),
         ),
       );
       if (ok != true || !mounted) return; // Abbruch
-      setState(() => p.stromkreise.add(s));
+      setState(() {
+        p.stromkreise.add(s);
+        propagateFiKette(p.stromkreise);
+      });
       await _speichernStill();
 
       if (!mounted) return;
@@ -327,7 +332,10 @@ class _ProtokollEditScreenState extends State<ProtokollEditScreen> {
         ),
       ),
     );
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() => propagateFiKette(p.stromkreise));
+      await _speichernStill();
+    }
   }
 
   @override
