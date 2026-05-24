@@ -20,6 +20,7 @@ class Pruefschritt {
   final String einheit;
   final String inputLabel; // Label des Eingabefelds (Default „Messwert")
   final bool groesserErlaubt; // „>" erlauben (Iso-Überlauf)
+  final String? schnellWert; // optional: Schnell-Eintrag-Button (z. B. „>500")
   final List<String> Function() optionen; // auswahl/dropdown (dynamisch)
   final String Function() wertLesen;
   final void Function(String) wertSchreiben;
@@ -36,6 +37,7 @@ class Pruefschritt {
     this.einheit = '',
     this.inputLabel = 'Messwert',
     this.groesserErlaubt = false,
+    this.schnellWert,
     List<String> Function()? optionen,
     String Function()? wertLesen,
     void Function(String)? wertSchreiben,
@@ -519,6 +521,15 @@ class _GefuehrtePruefungScreenState extends State<GefuehrtePruefungScreen> {
                 border: const OutlineInputBorder(),
               ),
             ),
+            if (s.schnellWert != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: OutlinedButton.icon(
+                  onPressed: () => _ctrl.text = s.schnellWert!,
+                  icon: const Icon(Icons.flash_on, size: 18),
+                  label: Text(s.schnellWert!),
+                ),
+              ),
             if (st != null)
               Padding(
                 padding: const EdgeInsets.only(top: 12),

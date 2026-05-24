@@ -12,6 +12,8 @@ import '../models/tabelle6.dart';
 import '../pdf/protokoll_pdf.dart';
 import '../storage/protokoll_storage.dart';
 import '../widgets/foto_galerie.dart';
+import 'gefuehrte_pruefung_screen.dart';
+import 'pruef_schritte.dart';
 import 'signature_screen.dart';
 import 'stromkreis_edit_screen.dart';
 
@@ -224,6 +226,110 @@ class _ProtokollEditScreenState extends State<ProtokollEditScreen> {
     _speichernStill();
   }
 
+  // ---------- Geführter Komplett-Durchgang ----------
+
+  Future<void> _komplettStarten() async {
+    final phase = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Geführter Komplett-Durchgang'),
+        content: const Text(
+          'Phase 1 (am Verteiler): Stammdaten aller Stromkreise erfassen — '
+          'FI, Charakteristik, Vorsicherung. Nach jedem Stromkreis fragt die '
+          'App „Noch einen?".\n\n'
+          'Phase 2 (an den Verbrauchsstellen): pro Stromkreis alle Messungen '
+          '(RLOW, RISO, IK, FI-Test, UB).\n\n'
+          'Die Phasen sind unabhängig — Phase 2 kannst du auch später machen.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 0),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 1),
+            child: const Text('Phase 1'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 2),
+            child: const Text('Phase 2'),
+          ),
+        ],
+      ),
+    );
+    if (phase == 1) await _phase1Stammdaten();
+    if (phase == 2) await _phase2Messdurchgang();
+  }
+
+  /// Phase 1: für jeden neuen Stromkreis nur die Stammdaten-Schritte;
+  /// nach dem Wizard fragt ein Dialog „Noch einen?".
+  Future<void> _phase1Stammdaten() async {
+    while (true) {
+      if (!mounted) return;
+      final s = Stromkreis();
+      final ok = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GefuehrtePruefungScreen(
+            titel: 'Stammdaten – Stromkreis ${p.stromkreise.length + 1}',
+            schritte: stromkreisStammdatenSchritte(s),
+          ),
+        ),
+      );
+      if (ok != true || !mounted) return; // Abbruch
+      setState(() => p.stromkreise.add(s));
+      await _speichernStill();
+
+      if (!mounted) return;
+      final noch = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Stammdaten gespeichert'),
+          content: Text(
+            'Stromkreis ${p.stromkreise.length} ist erfasst.\n'
+            'Noch einen Stromkreis am Verteiler ablesen?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Fertig'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Noch einen'),
+            ),
+          ],
+        ),
+      );
+      if (noch != true) return;
+    }
+  }
+
+  /// Phase 2: ein einziger großer Wizard, der pro Stromkreis alle Messungen
+  /// hintereinander abarbeitet (RLOW → RISO → … → UB), dann zum nächsten.
+  Future<void> _phase2Messdurchgang() async {
+    if (p.stromkreise.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Keine Stromkreise erfasst – zuerst Phase 1 durchführen.'),
+        ));
+      }
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GefuehrtePruefungScreen(
+          titel: 'Messdurchgang (${p.stromkreise.length} Stromkreise)',
+          schritte: protokollMessSchritte(p.stromkreise, p.netzform),
+          onSpeichern: _speichernStill,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -367,6 +473,15 @@ class _ProtokollEditScreenState extends State<ProtokollEditScreen> {
                 label: const Text('Hinzufügen'),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: _komplettStarten,
+              icon: const Icon(Icons.checklist),
+              label: const Text('Geführter Komplett-Durchgang'),
+            ),
           ),
           const SizedBox(height: 8),
           if (p.stromkreise.isEmpty)
